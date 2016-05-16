@@ -1,10 +1,10 @@
 # Copyright 2003, 2004, 2005 Infrae
 # Released under the BSD license (see LICENSE.txt)
-from __future__ import nested_scopes
-import urllib2
+
+import urllib.request, urllib.error, urllib.parse
 import base64
-from urllib import urlencode
-from StringIO import StringIO
+from urllib.parse import urlencode
+from io import StringIO
 from types import SliceType
 from lxml import etree
 import time
@@ -37,7 +37,7 @@ class BaseClient(common.OAIPMH):
         elif granularity == 'YYYY-MM-DDThh:mm:ssZ':
             self._day_granularity= False
         else:
-            raise Error, "Non-standard granularity on server: %s" % granularity
+            raise Error("Non-standard granularity on server: %s" % granularity)
             
     def handleVerb(self, verb, kw):
         # validate kw first
@@ -92,7 +92,7 @@ class BaseClient(common.OAIPMH):
         # and we're basically hacking around non-wellformedness anyway,
         # but oh well
         if self._ignore_bad_character_hack: 	 
-            xml = unicode(xml, 'UTF-8', 'replace') 	 
+            xml = str(xml, 'UTF-8', 'replace') 	 
             # also get rid of character code 12 	 
             xml = xml.replace(chr(12), '?')
             xml = xml.encode('UTF-8')
@@ -263,8 +263,8 @@ class BaseClient(common.OAIPMH):
                                      namespaces=namespaces).evaluate
             # make sure we get back unicode strings instead
             # of lxml.etree._ElementUnicodeResult objects.
-            setSpec = unicode(e('string(oai:setSpec/text())'))
-            setName = unicode(e('string(oai:setName/text())'))
+            setSpec = str(e('string(oai:setSpec/text())'))
+            setName = str(e('string(oai:setName/text())'))
             # XXX setDescription nodes
             sets.append((setSpec, setName, None))
         return sets, token
@@ -288,11 +288,10 @@ class BaseClient(common.OAIPMH):
                                 'badVerb', 'cannotDisseminateFormat',
                                 'idDoesNotExist', 'noRecordsMatch',
                                 'noMetadataFormats', 'noSetHierarchy']:
-                    raise error.UnknownError,\
-                          "Unknown error code from server: %s, message: %s" % (
-                        code, msg)
+                    raise error.UnknownError("Unknown error code from server: %s, message: %s" % (
+                        code, msg))
                 # find exception in error module and raise with msg
-                raise getattr(error, code[0].upper() + code[1:] + 'Error'), msg
+                raise getattr(error, code[0].upper() + code[1:] + 'Error')(msg)
         return tree
     
     def makeRequest(self, **kw):
@@ -321,7 +320,7 @@ class Client(BaseClient):
             headers = {'User-Agent': 'pyoai'}
             if self._credentials is not None:
                 headers['Authorization'] = 'Basic ' + self._credentials.strip()
-            request = urllib2.Request(
+            request = urllib.request.Request(
                 self._base_url, data=urlencode(kw), headers=headers)
             return retrieveFromUrlWaiting(request)
 
@@ -352,12 +351,12 @@ def retrieveFromUrlWaiting(request,
     """
     for i in range(wait_max):
         try:
-            f = urllib2.urlopen(request)
+            f = urllib.request.urlopen(request)
             text = f.read()
             f.close()
             # we successfully opened without having to wait
             break
-        except urllib2.HTTPError, e:
+        except urllib.error.HTTPError as e:
             if e.code == 503:
                 try:
                     retryAfter = int(e.hdrs.get('Retry-After'))
@@ -371,7 +370,7 @@ def retrieveFromUrlWaiting(request,
                 # reraise any other HTTP error
                 raise
     else:
-        raise Error, "Waited too often (more than %s times)" % wait_max
+        raise Error("Waited too often (more than %s times)" % wait_max)
     return text
 
 class ServerClient(BaseClient):
