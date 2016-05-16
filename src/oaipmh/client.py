@@ -5,7 +5,6 @@ import urllib.request, urllib.error, urllib.parse
 import base64
 from urllib.parse import urlencode
 from io import StringIO
-from types import SliceType
 from lxml import etree
 import time
 import codecs
