@@ -8,12 +8,14 @@ from io import StringIO
 from lxml import etree
 import time
 import codecs
+import os
+import gzip
 
 from oaipmh import common, metadata, validation, error
 from oaipmh.datestamp import datestamp_to_datetime, datetime_to_datestamp
 
-WAIT_DEFAULT = 120 # two minutes
-WAIT_MAX = 5
+WAIT_DEFAULT = 240 # four minutes
+WAIT_MAX = 64
 
 class Error(Exception):
     pass
@@ -24,6 +26,7 @@ class BaseClient(common.OAIPMH):
         self._metadata_registry = (
             metadata_registry or metadata.global_metadata_registry)
         self._ignore_bad_character_hack = 0
+        self._fix_cairn_output_hack = True
         self._day_granularity = False
 
     def updateGranularity(self):
@@ -58,11 +61,16 @@ class BaseClient(common.OAIPMH):
         elif 'until' in kw:
             # until is None but is explicitly in kw, remove it
             del kw['until']
+
+        sent_kw = kw
+        if 'resumptionToken' in kw:
+            sent_kw = dict()
+            sent_kw['resumptionToken'] = kw['resumptionToken']
         
         # now call underlying implementation
         method_name = verb + '_impl'
         return getattr(self, method_name)(
-            kw, self.makeRequestErrorHandling(verb=verb, **kw))    
+            kw, self.makeRequestErrorHandling(verb=verb, **sent_kw))    
 
     def getNamespaces(self):
         """Get OAI namespaces.
@@ -95,6 +103,8 @@ class BaseClient(common.OAIPMH):
             # also get rid of character code 12 	 
             xml = xml.replace(chr(12), '?')
             xml = xml.encode('UTF-8')
+        if self._fix_cairn_output_hack:
+            xml = xml.replace('<span styl</dc:title>', '</dc:title>')
         return etree.XML(xml)
 
     # implementation of the various methods, delegated here by
@@ -167,10 +177,16 @@ class BaseClient(common.OAIPMH):
 
         return metadataFormats
 
+    def ListRecordsFromFile(self, metadataPrefix, tree):
+        namespaces = self.getNamespaces()
+        metadata_registry = self._metadata_registry
+        return self.buildRecords(metadataPrefix, namespaces,
+                metadata_registry, tree)
+
     def ListRecords_impl(self, args, tree):
         namespaces = self.getNamespaces()
-        metadata_prefix = args['metadataPrefix']
         metadata_registry = self._metadata_registry
+        metadata_prefix = args['metadataPrefix']
         def firstBatch():
             return self.buildRecords(
                 metadata_prefix, namespaces,
@@ -268,6 +284,29 @@ class BaseClient(common.OAIPMH):
             sets.append((setSpec, setName, None))
         return sets, token
 
+    def listRecordsByDir(self, dirname, metadataPrefix):
+        for dirpath, dirnames, filenames in os.walk(dirname):
+            for fname in filenames:
+                print(fname)
+                full_fname = os.path.join(dirpath, fname)
+                if fname.endswith('.gz'):
+                    f = gzip.open(full_fname, 'r')
+                else:
+                    f = open(full_fname, 'r')
+                tree = self.loadResponseFromFile(f)
+                f.close()
+                records, resumption = self.ListRecordsFromFile(metadataPrefix, tree)
+                for record in records:
+                    yield record
+
+    def loadResponseFromFile(self, fdesc):
+        xml = fdesc.read()
+        try:
+            tree = self.parse(xml)
+        except SyntaxError:
+            raise error.XMLSyntaxError(kw)
+        return tree
+
     def makeRequestErrorHandling(self, **kw):
         xml = self.makeRequest(**kw)
         try:
@@ -302,6 +341,7 @@ class Client(BaseClient):
         BaseClient.__init__(self, metadata_registry)
         self._base_url = base_url
         self._local_file = local_file
+        self.get_method = False
         if credentials is not None:
             self._credentials = base64.encodestring('%s:%s' % credentials)
         else:
@@ -319,8 +359,12 @@ class Client(BaseClient):
             headers = {'User-Agent': 'pyoai'}
             if self._credentials is not None:
                 headers['Authorization'] = 'Basic ' + self._credentials.strip()
-            request = urllib.request.Request(
-                self._base_url, data=urlencode(kw), headers=headers)
+            if self.get_method:
+                request = urllib.request.Request(
+                        self._base_url+'?'+urlencode(kw), headers=headers)
+            else:
+                request = urllib.request.Request(
+                    self._base_url, data=urlencode(kw), headers=headers)
             return retrieveFromUrlWaiting(request)
 
 def buildHeader(header_node, namespaces):
@@ -342,6 +386,8 @@ def ResumptionListGenerator(firstBatch, nextBatch):
             itemFound = True
         if token is None or not itemFound:
             break
+        else:
+            print("Next token: "+token)
         result, token = nextBatch(token)
 
 def retrieveFromUrlWaiting(request,
@@ -350,24 +396,38 @@ def retrieveFromUrlWaiting(request,
     """
     for i in range(wait_max):
         try:
+            print("Opening URL "+request.get_full_url())
+            if request.data:
+                print("Parameters: "+request.data)
             f = urllib.request.urlopen(request)
             text = f.read()
             f.close()
             # we successfully opened without having to wait
             break
         except urllib.error.HTTPError as e:
-            if e.code == 503:
+            if e.code >= 500:
                 try:
                     retryAfter = int(e.hdrs.get('Retry-After'))
                 except TypeError:
                     retryAfter = None
+                print("Caught 50* error. Retry after: "+str(retryAfter))
                 if retryAfter is None:
                     time.sleep(wait_default)
                 else:
                     time.sleep(retryAfter)
+            elif e.code == 404:
+                text = e.read()
+                print("Caught 404 error. Text is: "+text[:200]+"...")
+                # Some OAI servers give a 404 error instead of 200 with the OAI error noRecordsMatch
+                if not '<OAI-PMH' in text:
+                    raise e
+                else:
+                    return text
             else:
                 # reraise any other HTTP error
                 raise
+        except urllib.error.URLError as e:
+            time.sleep(wait_default)
     else:
         raise Error("Waited too often (more than %s times)" % wait_max)
     return text

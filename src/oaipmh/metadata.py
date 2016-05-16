@@ -62,6 +62,7 @@ class MetadataReader(object):
         xpath_evaluator = etree.XPathEvaluator(element, 
                                                namespaces=self._namespaces)
         
+        map['element'] = element
         e = xpath_evaluator.evaluate
         # now extra field info according to xpath expr
         for field_name, (field_type, expr) in list(self._fields.items()):
@@ -101,6 +102,43 @@ oai_dc_reader = MetadataReader(
     'rights':      ('textList', 'oai_dc:dc/dc:rights/text()')
     },
     namespaces={
+    'oai_dc': 'http://www.openarchives.org/OAI/2.0/oai_dc/',
+    'dc' : 'http://purl.org/dc/elements/1.1/'}
+    )
+
+
+base_dc_reader = MetadataReader(
+    fields={
+    'title':       ('textList', 'base_dc:dc/dc:title/text()'),
+    'creator':     ('textList', 'base_dc:dc/dc:creator/text()'),
+    'subject':     ('textList', 'base_dc:dc/dc:subject/text()'),
+    'description': ('textList', 'base_dc:dc/dc:description/text()'),
+    'publisher':   ('textList', 'base_dc:dc/dc:publisher/text()'),
+    'contributor': ('textList', 'base_dc:dc/dc:contributor/text()'),
+    'date':        ('textList', 'base_dc:dc/dc:date/text()'),
+    'type':        ('textList', 'base_dc:dc/dc:type/text()'),
+    'format':      ('textList', 'base_dc:dc/dc:format/text()'),
+    'identifier':  ('textList', 'base_dc:dc/dc:identifier/text()'),
+    'source':      ('textList', 'base_dc:dc/dc:source/text()'),
+    'language':    ('textList', 'base_dc:dc/dc:language/text()'),
+    'relation':    ('textList', 'base_dc:dc/dc:relation/text()'),
+    'coverage':    ('textList', 'base_dc:dc/dc:coverage/text()'),
+    'rights':      ('textList', 'base_dc:dc/dc:rights/text()'),
+    'autoclasscode':('textList', 'base_dc:dc/base_dc:autoclasscode/text()'),
+    'classcode':('textList', 'base_dc:dc/base_dc:classcode/text()'),
+    'collection':('textList', 'base_dc:dc/base_dc:collection/text()'),
+    'collname':('textList', 'base_dc:dc/base_dc:collname/text()'),
+    'continent':('textList', 'base_dc:dc/base_dc:continent/text()'),
+    'country':('textList', 'base_dc:dc/base_dc:country/text()'),
+    'lang':('textList', 'base_dc:dc/base_dc:lang/text()'),
+    'link':('textList', 'base_dc:dc/base_dc:link/text()'),
+    'oa':('textList', 'base_dc:dc/base_dc:oa/text()'),
+    'rightsnorm':('textList', 'base_dc:dc/base_dc:rightsnorm/text()'),
+    'typenorm':('textList', 'base_dc:dc/base_dc:typenorm/text()'),
+    'year':('textList', 'base_dc:dc/base_dc:year/text()'),
+    },
+    namespaces={
+    'base_dc': 'http://oai.base-search.net/base_dc/',
     'oai_dc': 'http://www.openarchives.org/OAI/2.0/oai_dc/',
     'dc' : 'http://purl.org/dc/elements/1.1/'}
     )

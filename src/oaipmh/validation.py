@@ -57,6 +57,7 @@ class ValidationSpec(object):
         'until':'optional',
         'set':'optional',
         'metadataPrefix':'required',
+        'resumptionToken':'optional',
         }
 
     ListSets = {
